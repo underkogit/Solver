@@ -1,34 +1,62 @@
-use std::path::PathBuf;
 use colored::Colorize;
 use mlua::Lua;
+use std::path::PathBuf;
 
-pub fn setup_globals_basic(lua: Lua, script_path: String, target: &Option<String>, verbose: bool) -> anyhow::Result<()> {
+pub fn setup_globals_basic(
+    lua: Lua,
+    script_path: String,
+    target: &Option<String>,
+    verbose: bool,
+) -> anyhow::Result<()> {
     let globals = lua.globals();
 
-    // ================ Basic Variables ================
+    // ================ Базовые переменные ================
+
+    // Глобальная переменная для включения подробного вывода
+    // if verbose then print("Verbose mode enabled") end
+    // Тип: boolean
     globals.set("verbose", verbose)?;
 
+    // Текущая цель сборки (может быть nil)
+    // if target then print("Building for: " .. target) end
+    // Тип: string | nil
     if let Some(target) = target {
         globals.set("target", target.clone())?;
     }
 
+    // Полный путь к текущему Lua скрипту
+    // print("Script location: " .. lua_script_path)
+    // Тип: string
     globals.set("lua_script_path", script_path)?;
 
+    // ================ Функции вывода ================
 
-
-    // ================ Success Print ================
+    // Выводит текст зеленым цветом (для успешных операций)
+    // print_success("Build completed successfully!")
+    // Вывод: зеленый текст в консоли
     let print_success = lua.create_function(|_, text: String| {
         println!("{}", text.green());
         Ok(())
     })?;
     globals.set("print_success", print_success)?;
 
-    // ================ Error Print ================
+    // Выводит текст красным цветом в stderr (для ошибок)
+    // print_error("Failed to compile project")
+    // Вывод: красный текст в stderr
     let print_error = lua.create_function(|_, text: String| {
         eprintln!("{}", text.red());
         Ok(())
     })?;
     globals.set("print_error", print_error)?;
+
+    // Выводит обычный текст в stdout
+    // println("Processing files...")
+    // Вывод: обычный текст в stdout
+    let println = lua.create_function(|_, text: String| {
+        println!("{}", text);
+        Ok(())
+    })?;
+    globals.set("println", println)?;
 
     Ok(())
 }
