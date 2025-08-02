@@ -45,11 +45,12 @@ pub fn setup_globals_io(
 
     // Записывает строку в файл
     // write_file("output.txt", "Hello, World!")
-    // Результат: создает или перезаписывает файл
+    // Возвращает: boolean (true если успешно записан)
     let write_file = lua.create_async_function(|_, (path, content): (String, String)| async move {
-        tokio::fs::write(path, content)
-            .await
-            .map_err(|e| mlua::Error::external(e))
+        match tokio::fs::write(path, content).await {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
     })?;
     globals.set("write_file", write_file)?;
 
@@ -57,31 +58,34 @@ pub fn setup_globals_io(
 
     // Создает директорию и все родительские папки
     // create_dir("build/debug/output")
-    // Результат: создает полный путь директорий
+    // Возвращает: boolean (true если успешно создана)
     let create_dir = lua.create_async_function(|_, path: String| async move {
-        tokio::fs::create_dir_all(path)
-            .await
-            .map_err(|e| mlua::Error::external(e))
+        match tokio::fs::create_dir_all(path).await {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
     })?;
     globals.set("create_dir", create_dir)?;
 
     // Удаляет файл
     // delete_file("temp.txt")
-    // Результат: удаляет файл из файловой системы
+    // Возвращает: boolean (true если успешно удален)
     let delete_file = lua.create_async_function(|_, path: String| async move {
-        tokio::fs::remove_file(path)
-            .await
-            .map_err(|e| mlua::Error::external(e))
+        match tokio::fs::remove_file(path).await {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
     })?;
     globals.set("delete_file", delete_file)?;
 
     // Удаляет директорию и все содержимое
     // delete_dir("temp_build")
-    // Результат: рекурсивно удаляет папку со всем содержимым
+    // Возвращает: boolean (true если успешно удалена)
     let delete_dir = lua.create_async_function(|_, path: String| async move {
-        tokio::fs::remove_dir_all(path)
-            .await
-            .map_err(|e| mlua::Error::external(e))
+        match tokio::fs::remove_dir_all(path).await {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
     })?;
     globals.set("delete_dir", delete_dir)?;
 
@@ -89,24 +93,171 @@ pub fn setup_globals_io(
 
     // Копирует файл из одного места в другое
     // copy_file("src.txt", "dest.txt")
-    // Результат: создает копию файла в новом месте
+    // Возвращает: boolean (true если успешно скопирован)
     let copy_file = lua.create_async_function(|_, (src, dest): (String, String)| async move {
-        tokio::fs::copy(src, dest)
-            .await
-            .map_err(|e| mlua::Error::external(e))
-            .map(|_| ())
+        match tokio::fs::copy(src, dest).await {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
     })?;
     globals.set("copy_file", copy_file)?;
 
     // Рекурсивно копирует директорию со всем содержимым
     // copy_dir("src_folder", "dest_folder")
-    // Результат: создает полную копию папки со всеми файлами и подпапками
+    // Возвращает: boolean (true если успешно скопирована)
     let copy_dir = lua.create_async_function(|_, (src, dest): (String, String)| async move {
-        copy_dir_iterative(&src, &dest)
-            .await
-            .map_err(|e| mlua::Error::external(e))
+        match copy_dir_iterative(&src, &dest).await {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
     })?;
     globals.set("copy_dir", copy_dir)?;
+
+    // ================ Получение списков файлов и директорий ================
+
+    // Получает список всех файлов и папок в директории
+    // local items = list_dir("src")
+    // Возвращает: table | nil (массив строк с именами файлов и папок)
+    let list_dir = lua.create_async_function(|_, path: String| async move {
+        match tokio::fs::read_dir(&path).await {
+            Ok(mut entries) => {
+                let mut items = Vec::new();
+                while let Some(entry) = entries.next_entry().await.map_err(|e| mlua::Error::external(e))? {
+                    if let Some(name) = entry.file_name().to_str() {
+                        items.push(name.to_string());
+                    }
+                }
+                items.sort();
+                Ok(Some(items))
+            },
+            Err(_) => Ok(None),
+        }
+    })?;
+    globals.set("list_dir", list_dir)?;
+
+    // Получает только файлы в директории (исключая папки)
+    // local files = list_files("src")
+    // Возвращает: table | nil (массив строк с именами только файлов)
+    let list_files = lua.create_async_function(|_, path: String| async move {
+        match tokio::fs::read_dir(&path).await {
+            Ok(mut entries) => {
+                let mut files = Vec::new();
+                while let Some(entry) = entries.next_entry().await.map_err(|e| mlua::Error::external(e))? {
+                    let metadata = entry.metadata().await.map_err(|e| mlua::Error::external(e))?;
+                    if metadata.is_file() {
+                        if let Some(name) = entry.file_name().to_str() {
+                            files.push(name.to_string());
+                        }
+                    }
+                }
+                files.sort();
+                Ok(Some(files))
+            },
+            Err(_) => Ok(None),
+        }
+    })?;
+    globals.set("list_files", list_files)?;
+
+    // Получает только директории в папке (исключая файлы)
+    // local dirs = list_dirs("src")
+    // Возвращает: table | nil (массив строк с именами только папок)
+    let list_dirs = lua.create_async_function(|_, path: String| async move {
+        match tokio::fs::read_dir(&path).await {
+            Ok(mut entries) => {
+                let mut dirs = Vec::new();
+                while let Some(entry) = entries.next_entry().await.map_err(|e| mlua::Error::external(e))? {
+                    let metadata = entry.metadata().await.map_err(|e| mlua::Error::external(e))?;
+                    if metadata.is_dir() {
+                        if let Some(name) = entry.file_name().to_str() {
+                            dirs.push(name.to_string());
+                        }
+                    }
+                }
+                dirs.sort();
+                Ok(Some(dirs))
+            },
+            Err(_) => Ok(None),
+        }
+    })?;
+    globals.set("list_dirs", list_dirs)?;
+
+    // Рекурсивно получает все файлы в директории и поддиректориях
+    // local all_files = list_files_recursive("src")
+    // Возвращает: table | nil (массив строк с полными путями к файлам)
+    let list_files_recursive = lua.create_async_function(|_, path: String| async move {
+        match list_files_recursive_impl(&path).await {
+            Ok(files) => Ok(Some(files)),
+            Err(_) => Ok(None),
+        }
+    })?;
+    globals.set("list_files_recursive", list_files_recursive)?;
+
+    // Получает детальную информацию о содержимом директории
+    // local info = list_dir_detailed("src")
+    // Возвращает: table | nil с элементами {name, type, size, modified}
+    let list_dir_detailed = lua.create_async_function(|lua, path: String| async move {
+        match tokio::fs::read_dir(&path).await {
+            Ok(mut entries) => {
+                let mut items = Vec::new();
+                while let Some(entry) = entries.next_entry().await.map_err(|e| mlua::Error::external(e))? {
+                    if let Ok(metadata) = entry.metadata().await {
+                        let item = lua.create_table()?;
+
+                        if let Some(name) = entry.file_name().to_str() {
+                            item.set("name", name)?;
+                        }
+
+                        let item_type = if metadata.is_file() { "file" } else { "directory" };
+                        item.set("type", item_type)?;
+                        item.set("size", metadata.len())?;
+
+                        if let Ok(modified) = metadata.modified() {
+                            if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
+                                item.set("modified", duration.as_secs())?;
+                            }
+                        }
+
+                        items.push(item);
+                    }
+                }
+                Ok(Some(items))
+            },
+            Err(_) => Ok(None),
+        }
+    })?;
+    globals.set("list_dir_detailed", list_dir_detailed)?;
+
+    // Фильтрует файлы по расширению
+    // local rs_files = list_files_by_extension("src", "rs")
+    // local all_rs_files = list_files_by_extension(".", "rs") -- текущая папка
+    // Возвращает: table | nil (массив файлов с указанным расширением)
+    let list_files_by_extension = lua.create_async_function(|_, (path, extension): (String, String)| async move {
+        match tokio::fs::read_dir(&path).await {
+            Ok(mut entries) => {
+                let mut files = Vec::new();
+                let target_ext = if extension.starts_with('.') {
+                    extension
+                } else {
+                    format!(".{}", extension)
+                };
+
+                while let Some(entry) = entries.next_entry().await.map_err(|e| mlua::Error::external(e))? {
+                    let metadata = entry.metadata().await.map_err(|e| mlua::Error::external(e))?;
+                    if metadata.is_file() {
+                        if let Some(name) = entry.file_name().to_str() {
+                            if name.ends_with(&target_ext) {
+                                files.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+                files.sort();
+                Ok(Some(files))
+            },
+            Err(_) => Ok(None),
+        }
+    })?;
+    globals.set("list_files_by_extension", list_files_by_extension)?;
 
     // ================ Работа с путями ================
 
@@ -188,4 +339,30 @@ async fn copy_dir_iterative(src: &str, dest: &str) -> tokio::io::Result<()> {
     }
 
     Ok(())
+}
+
+async fn list_files_recursive_impl(path: &str) -> tokio::io::Result<Vec<String>> {
+    use std::collections::VecDeque;
+    use tokio::fs;
+
+    let mut files = Vec::new();
+    let mut queue = VecDeque::new();
+    queue.push_back(path.to_string());
+
+    while let Some(current_path) = queue.pop_front() {
+        let mut entries = fs::read_dir(&current_path).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let entry_path = entry.path();
+            let metadata = entry.metadata().await?;
+
+            if metadata.is_file() {
+                files.push(entry_path.to_string_lossy().to_string());
+            } else if metadata.is_dir() {
+                queue.push_back(entry_path.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    files.sort();
+    Ok(files)
 }
