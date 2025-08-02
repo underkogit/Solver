@@ -1,4 +1,8 @@
 mod lua_engine;
+mod utility;
+mod basic;
+mod io;
+mod text;
 
 use anyhow::Result;
 use clap::Parser;
