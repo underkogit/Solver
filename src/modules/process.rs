@@ -50,7 +50,7 @@ pub fn setup_globals_process(
                         line = stderr_lines.next_line() => {
                             match line {
                                 Ok(Some(line)) => {
-                                    let error_line = format!("[ERROR] {}", line);
+                                    let error_line = format!("{}", line);
                                     callback.call_async::<mlua::Value>(error_line).await
                                         .map_err(|e| mlua::Error::external(format!("Callback error: {}", e)))?;
                                 },
