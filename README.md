@@ -78,6 +78,7 @@ luabuild build.lua
 verbose          -- boolean: режим подробного вывода
 target           -- string: текущая цель сборки  
 lua_script_path  -- string: путь к выполняемому скрипту
+lua_script_directory  -- string: папка к выполняемого скрипта
 ```
 
 #### Функции вывода

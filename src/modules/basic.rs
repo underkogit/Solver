@@ -9,7 +9,16 @@ pub fn setup_globals_basic(
     verbose: bool,
 ) -> anyhow::Result<()> {
     let globals = lua.globals();
-
+    
+    
+    
+    let path = PathBuf::from(&script_path.clone());
+    let directory = path.parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_string_lossy()
+        .to_string();
+    
+    
     // ================ Базовые переменные ================
 
     // Глобальная переменная для включения подробного вывода
@@ -27,7 +36,18 @@ pub fn setup_globals_basic(
     // Полный путь к текущему Lua скрипту
     // print("Script location: " .. lua_script_path)
     // Тип: string
-    globals.set("lua_script_path", script_path)?;
+    globals.set("lua_script_path", script_path.clone())?;
+
+
+
+
+    // Возвращает директорию текущего Lua скрипта
+    // local dir = lua_script_directory
+    // print("Script directory: " .. dir)
+    // Тип: string
+    
+    globals.set("lua_script_directory", directory.clone())?;
+
 
     // ================ Функции вывода ================
 
