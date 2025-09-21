@@ -105,8 +105,8 @@ pub fn setup_globals_io(
     // Рекурсивно копирует директорию со всем содержимым
     // copy_dir("src_folder", "dest_folder")
     // Возвращает: boolean (true если успешно скопирована)
-    let copy_dir = lua.create_async_function(|_, (src, dest): (String, String)| async move {
-        match copy_dir_iterative(&src, &dest).await {
+    let copy_dir = lua.create_async_function(|_, (src, dest , dir_ignore): (String, String , String)| async move {
+        match copy_dir_iterative(&src, &dest , &dir_ignore).await {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
@@ -312,7 +312,7 @@ pub fn setup_globals_io(
     Ok(())
 }
 
-async fn copy_dir_iterative(src: &str, dest: &str) -> tokio::io::Result<()> {
+async fn copy_dir_iterative(src: &str, dest: &str , dir_ignore: &str) -> tokio::io::Result<()> {
     use std::collections::VecDeque;
     use tokio::fs;
 
@@ -328,10 +328,13 @@ async fn copy_dir_iterative(src: &str, dest: &str) -> tokio::io::Result<()> {
             let dest_path = Path::new(&current_dest).join(entry.file_name());
 
             if entry_path.is_dir() {
-                queue.push_back((
-                    entry_path.to_string_lossy().to_string(),
-                    dest_path.to_string_lossy().to_string(),
-                ));
+                // Пропускаем директорию obfuscation
+                if entry.file_name() != dir_ignore {
+                    queue.push_back((
+                        entry_path.to_string_lossy().to_string(),
+                        dest_path.to_string_lossy().to_string(),
+                    ));
+                }
             } else {
                 fs::copy(&entry_path, &dest_path).await?;
             }
